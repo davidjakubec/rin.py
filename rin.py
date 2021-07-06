@@ -5,6 +5,7 @@ from os import path
 
 from Bio.PDB.MMCIFParser import FastMMCIFParser
 from Bio.PDB.Polypeptide import is_aa
+from Bio.PDB.NeighborSearch import NeighborSearch
 
 
 def parse_chains(structure_file, model_id=0, chain_ids=None):
@@ -29,9 +30,16 @@ def extract_node_atoms(chains, node_atom_selection="CA"):
     return node_atoms
 
 
+def find_atom_contacts(node_atoms, cutoff=8.0):
+    ns = NeighborSearch(node_atoms)
+    atom_contacts = ns.search_all(cutoff)
+    return atom_contacts
+
+
 def _main(structure_file, model_id, chain_ids, node_atom_selection, cutoff):
     chains = parse_chains(structure_file, model_id, chain_ids)
     node_atoms = extract_node_atoms(chains, node_atom_selection)
+    atom_contacts = find_atom_contacts(node_atoms, cutoff)
 
 
 if __name__ == "__main__":
