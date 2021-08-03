@@ -20,13 +20,19 @@ def parse_chains(structure_file, model_id=0, chain_ids=None):
     return chains
 
 
-def extract_node_atoms(chains, node_atom_selection="CA"):
+def extract_node_atoms(chains, node_atom_selection="CA", include_hetatms=False):
     node_atoms = []
     for chain in chains:
         for residue in chain:
             if node_atom_selection == "CA":
                 if is_aa(residue) and residue.has_id(node_atom_selection):
                     node_atoms.append(residue[node_atom_selection])
+            elif node_atom_selection == "nonhydrogen":
+                if not include_hetatms and residue.get_id()[0].strip():
+                    continue
+                for atom in residue:
+                    if atom.element != "H":
+                        node_atoms.append(atom)
     return node_atoms
 
 
@@ -36,9 +42,9 @@ def find_atom_contacts(node_atoms, cutoff=8.0):
     return atom_contacts
 
 
-def _main(structure_file, model_id, chain_ids, node_atom_selection, cutoff):
+def _main(structure_file, model_id, chain_ids, node_atom_selection, include_hetatms, cutoff):
     chains = parse_chains(structure_file, model_id, chain_ids)
-    node_atoms = extract_node_atoms(chains, node_atom_selection)
+    node_atoms = extract_node_atoms(chains, node_atom_selection, include_hetatms)
     atom_contacts = find_atom_contacts(node_atoms, cutoff)
 
 
@@ -48,6 +54,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_id", default=0, type=int)
     parser.add_argument("--chain_ids", nargs="+")
     parser.add_argument("--node_atom_selection", default="CA")
+    parser.add_argument("--include_hetatms", action="store_true")
     parser.add_argument("--cutoff", default=8.0, type=float)
     args = vars(parser.parse_args())
     _main(**args)
