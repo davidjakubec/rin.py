@@ -27,6 +27,11 @@ def extract_node_atoms(chains, node_atom_selection="CA", include_hetatms=False):
             if node_atom_selection == "CA":
                 if is_aa(residue) and residue.has_id(node_atom_selection):
                     node_atoms.append(residue[node_atom_selection])
+            elif node_atom_selection == "CB":
+                if is_aa(residue) and (residue.get_resname() != "GLY") and residue.has_id(node_atom_selection):
+                    node_atoms.append(residue[node_atom_selection])
+                elif is_aa(residue) and (residue.get_resname() == "GLY") and residue.has_id("CA"):
+                    node_atoms.append(residue["CA"])
             elif node_atom_selection == "nonhydrogen":
                 if not include_hetatms and residue.get_id()[0].strip():
                     continue
