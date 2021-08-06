@@ -6,6 +6,7 @@ from os import path
 from Bio.PDB.MMCIFParser import FastMMCIFParser
 from Bio.PDB.Polypeptide import is_aa
 from Bio.PDB.NeighborSearch import NeighborSearch
+import networkx as nx
 
 
 def parse_chains(structure_file, model_id=0, chain_ids=None):
@@ -21,24 +22,29 @@ def parse_chains(structure_file, model_id=0, chain_ids=None):
 
 
 def extract_node_atoms(chains, node_atom_selection="CA", include_hetatms=False):
+    residue_ids = []
     node_atoms = []
     for chain in chains:
         for residue in chain:
             if node_atom_selection == "CA":
                 if is_aa(residue) and residue.has_id(node_atom_selection):
+                    residue_ids.append(residue.get_full_id())
                     node_atoms.append(residue[node_atom_selection])
             elif node_atom_selection == "CB":
                 if is_aa(residue) and (residue.get_resname() != "GLY") and residue.has_id(node_atom_selection):
+                    residue_ids.append(residue.get_full_id())
                     node_atoms.append(residue[node_atom_selection])
                 elif is_aa(residue) and (residue.get_resname() == "GLY") and residue.has_id("CA"):
+                    residue_ids.append(residue.get_full_id())
                     node_atoms.append(residue["CA"])
             elif node_atom_selection == "nonhydrogen":
                 if not include_hetatms and residue.get_id()[0].strip():
                     continue
+                residue_ids.append(residue.get_full_id())
                 for atom in residue:
                     if atom.element != "H":
                         node_atoms.append(atom)
-    return node_atoms
+    return residue_ids, node_atoms
 
 
 def find_atom_contacts(node_atoms, cutoff=8.0):
@@ -47,10 +53,42 @@ def find_atom_contacts(node_atoms, cutoff=8.0):
     return atom_contacts
 
 
+def _get_interaction_type(atom_i, atom_j):
+    NONPOLAR_ATOMS = {"C"}
+    if (atom_i.element in NONPOLAR_ATOMS) and (atom_j.element in NONPOLAR_ATOMS):
+        interaction_type = "nonpolar"
+    elif (atom_i.element not in NONPOLAR_ATOMS) and (atom_j.element not in NONPOLAR_ATOMS):
+        interaction_type = "polar"
+    else:
+        interaction_type = "mixed"
+    return interaction_type
+
+
+def generate_residue_interaction_graph(residue_ids, atom_contacts):
+    residue_interaction_graph = nx.Graph()
+    residue_interaction_graph.add_nodes_from(residue_ids)
+    assert len(residue_ids) == residue_interaction_graph.number_of_nodes()
+    for atom_i, atom_j in atom_contacts:
+        residue_i_id = atom_i.get_parent().get_full_id()
+        residue_j_id = atom_j.get_parent().get_full_id()
+        if residue_i_id != residue_j_id:
+            assert residue_interaction_graph.has_node(residue_i_id)
+            assert residue_interaction_graph.has_node(residue_j_id)
+            interaction_type = _get_interaction_type(atom_i, atom_j)
+            atom_distance = atom_i - atom_j
+            if residue_interaction_graph.has_edge(residue_i_id, residue_j_id):
+                residue_interaction_graph.edges[residue_i_id, residue_j_id]["interactions"][interaction_type].append(atom_distance)
+            else:
+                residue_interaction_graph.add_edge(residue_i_id, residue_j_id, interactions={"mixed": [], "nonpolar": [], "polar": []})
+                residue_interaction_graph.edges[residue_i_id, residue_j_id]["interactions"][interaction_type].append(atom_distance)
+    return residue_interaction_graph
+
+
 def _main(structure_file, model_id, chain_ids, node_atom_selection, include_hetatms, cutoff):
     chains = parse_chains(structure_file, model_id, chain_ids)
-    node_atoms = extract_node_atoms(chains, node_atom_selection, include_hetatms)
+    residue_ids, node_atoms = extract_node_atoms(chains, node_atom_selection, include_hetatms)
     atom_contacts = find_atom_contacts(node_atoms, cutoff)
+    residue_interaction_graph = generate_residue_interaction_graph(residue_ids, atom_contacts)
 
 
 if __name__ == "__main__":
