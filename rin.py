@@ -8,16 +8,28 @@ from Bio.PDB.Polypeptide import is_aa
 from Bio.PDB.NeighborSearch import NeighborSearch
 import networkx as nx
 
+_NONPOLAR_ATOMS = {"C"}
+
+
+def _remove_hydrogens(chains):
+    for chain in chains:
+        for residue in chain:
+            hydrogen_atom_ids = [atom.get_id() for atom in residue if atom.element == "H"]
+            for hydrogen_atom_id in hydrogen_atom_ids:
+                residue.detach_child(hydrogen_atom_id)
+        assert [atom for atom in chain.get_atoms() if atom.element == "H"] == []
+
 
 def parse_chains(structure_file, model_id=0, chain_ids=None):
     if structure_file.endswith(".cif"):
         parser = FastMMCIFParser(QUIET=True)
-        structure_id = path.basename(structure_file).rstrip(".cif")
+    structure_id = path.basename(structure_file)[:-4]
     model = parser.get_structure(structure_id, structure_file)[model_id]
     if chain_ids is not None:
         chains = [model[chain_id] for chain_id in chain_ids]
     else:
         chains = model.get_list()
+    _remove_hydrogens(chains)
     return chains
 
 
@@ -54,10 +66,9 @@ def find_atom_contacts(node_atoms, cutoff=8.0):
 
 
 def _get_interaction_type(atom_i, atom_j):
-    NONPOLAR_ATOMS = {"C"}
-    if (atom_i.element in NONPOLAR_ATOMS) and (atom_j.element in NONPOLAR_ATOMS):
+    if (atom_i.element in _NONPOLAR_ATOMS) and (atom_j.element in _NONPOLAR_ATOMS):
         interaction_type = "nonpolar"
-    elif (atom_i.element not in NONPOLAR_ATOMS) and (atom_j.element not in NONPOLAR_ATOMS):
+    elif (atom_i.element not in _NONPOLAR_ATOMS) and (atom_j.element not in _NONPOLAR_ATOMS):
         interaction_type = "polar"
     else:
         interaction_type = "mixed"
