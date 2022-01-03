@@ -11,32 +11,28 @@ import networkx as nx
 _NONPOLAR_ATOMS = {"C"}
 
 
-def _remove_hydrogens(chains):
-    for chain in chains:
+def _remove_hydrogens(model):
+    for chain in model:
         for residue in chain:
             hydrogen_atom_ids = [atom.get_id() for atom in residue if atom.element == "H"]
             for hydrogen_atom_id in hydrogen_atom_ids:
                 residue.detach_child(hydrogen_atom_id)
-        assert [atom for atom in chain.get_atoms() if atom.element == "H"] == []
+    assert [atom for atom in model.get_atoms() if atom.element == "H"] == []
 
 
-def parse_chains(structure_file, model_id=0, chain_ids=None):
+def parse_model(structure_file, model_id=0):
     if structure_file.endswith(".cif"):
         parser = FastMMCIFParser(QUIET=True)
     structure_id = path.basename(structure_file)[:-4]
     model = parser.get_structure(structure_id, structure_file)[model_id]
-    if chain_ids is not None:
-        chains = [model[chain_id] for chain_id in chain_ids]
-    else:
-        chains = model.get_list()
-    _remove_hydrogens(chains)
-    return chains
+    _remove_hydrogens(model)
+    return model
 
 
-def extract_node_atoms(chains, node_atom_selection="CA", include_hetatms=False):
+def extract_node_atoms(model, node_atom_selection="CA", include_hetatms=False):
     residue_ids = []
     node_atoms = []
-    for chain in chains:
+    for chain in model:
         for residue in chain:
             if node_atom_selection == "CA":
                 if is_aa(residue) and residue.has_id(node_atom_selection):
@@ -95,9 +91,9 @@ def generate_residue_interaction_graph(residue_ids, atom_contacts):
     return residue_interaction_graph
 
 
-def _main(structure_file, model_id, chain_ids, node_atom_selection, include_hetatms, cutoff):
-    chains = parse_chains(structure_file, model_id, chain_ids)
-    residue_ids, node_atoms = extract_node_atoms(chains, node_atom_selection, include_hetatms)
+def _main(structure_file, model_id, node_atom_selection, include_hetatms, cutoff):
+    model = parse_model(structure_file, model_id)
+    residue_ids, node_atoms = extract_node_atoms(model, node_atom_selection, include_hetatms)
     atom_contacts = find_atom_contacts(node_atoms, cutoff)
     residue_interaction_graph = generate_residue_interaction_graph(residue_ids, atom_contacts)
 
@@ -106,7 +102,6 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("structure_file")
     parser.add_argument("--model_id", default=0, type=int)
-    parser.add_argument("--chain_ids", nargs="+")
     parser.add_argument("--node_atom_selection", default="CA")
     parser.add_argument("--include_hetatms", action="store_true")
     parser.add_argument("--cutoff", default=8.0, type=float)
