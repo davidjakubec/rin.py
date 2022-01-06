@@ -7,17 +7,9 @@ from Bio.PDB.MMCIFParser import FastMMCIFParser
 from Bio.PDB.Polypeptide import is_aa
 from Bio.PDB.NeighborSearch import NeighborSearch
 import networkx as nx
+from Bio.PDB.SASA import ShrakeRupley
 
 _NONPOLAR_ATOMS = {"C"}
-
-
-def _remove_hydrogens(model):
-    for chain in model:
-        for residue in chain:
-            hydrogen_atom_ids = [atom.get_id() for atom in residue if atom.element == "H"]
-            for hydrogen_atom_id in hydrogen_atom_ids:
-                residue.detach_child(hydrogen_atom_id)
-    assert [atom for atom in model.get_atoms() if atom.element == "H"] == []
 
 
 def parse_model(structure_file, model_id=0):
@@ -25,7 +17,6 @@ def parse_model(structure_file, model_id=0):
         parser = FastMMCIFParser(QUIET=True)
     structure_id = path.basename(structure_file)[:-4]
     model = parser.get_structure(structure_id, structure_file)[model_id]
-    _remove_hydrogens(model)
     return model
 
 
@@ -91,11 +82,35 @@ def generate_residue_interaction_graph(residue_ids, atom_contacts):
     return residue_interaction_graph
 
 
+def _remove_hydrogens(model):
+    for chain in model:
+        for residue in chain:
+            hydrogen_atom_ids = [atom.get_id() for atom in residue if atom.element == "H"]
+            for hydrogen_atom_id in hydrogen_atom_ids:
+                residue.detach_child(hydrogen_atom_id)
+    assert [atom for atom in model.get_atoms() if atom.element == "H"] == []
+
+
+def _remove_hetatms(model):
+    for chain in model:
+        hetatm_residue_ids = [residue.get_id() for residue in chain if residue.get_id()[0].strip()]
+        for hetatm_residue_id in hetatm_residue_ids:
+            chain.detach_child(hetatm_residue_id)
+    assert [residue for residue in model.get_residues() if residue.get_id()[0].strip()] == []
+
+
+def calculate_residue_sasas(model, include_hetatms=False):
+    _remove_hydrogens(model)
+    if not include_hetatms:
+        _remove_hetatms(model)
+
+
 def _main(structure_file, model_id, node_atom_selection, include_hetatms, cutoff):
     model = parse_model(structure_file, model_id)
     residue_ids, node_atoms = extract_node_atoms(model, node_atom_selection, include_hetatms)
     atom_contacts = find_atom_contacts(node_atoms, cutoff)
     residue_interaction_graph = generate_residue_interaction_graph(residue_ids, atom_contacts)
+    residue_sasas = calculate_residue_sasas(model.copy(), include_hetatms)
 
 
 if __name__ == "__main__":
