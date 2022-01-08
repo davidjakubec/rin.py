@@ -99,10 +99,50 @@ def _remove_hetatms(model):
     assert [residue for residue in model.get_residues() if residue.get_id()[0].strip()] == []
 
 
+def _get_atom_type(atom):
+    if atom.element in _NONPOLAR_ATOMS:
+        atom_type = "nonpolar"
+    else:
+        atom_type = "polar"
+    return atom_type
+
+
 def calculate_residue_sasas(model, include_hetatms=False):
     _remove_hydrogens(model)
     if not include_hetatms:
         _remove_hetatms(model)
+    sr = ShrakeRupley()
+    sr.compute(model)
+    residue_sasas = {}
+    for chain in model:
+        residues = chain.get_list()
+        for i, residue in enumerate(residues):
+            residue_id = residue.get_full_id()
+            residue_sasas[residue_id] = {"free": {"nonpolar": 0.0, "polar": 0.0}, "screened": {"nonpolar": 0.0, "polar": 0.0}}
+            for atom in residue:
+                residue_sasas[residue_id]["screened"][_get_atom_type(atom)] += atom.sasa
+            residue_copy = residue.copy()
+            if is_aa(residue):
+                if i != 0:
+                    try:
+                        CX = residues[i - 1]["C"].copy()
+                        CX.id = "CX_"
+                        residue_copy.add(CX)
+                    except KeyError:
+                        pass
+                if i != (len(residues) - 1):
+                    try:
+                        NX = residues[i + 1]["N"].copy()
+                        NX.id = "NX_"
+                        residue_copy.add(NX)
+                    except KeyError:
+                        pass
+            sr.compute(residue_copy)
+            atom_ids = [atom.get_id() for atom in residue]
+            for atom_id in atom_ids:
+                atom = residue_copy[atom_id]
+                residue_sasas[residue_id]["free"][_get_atom_type(atom)] += atom.sasa
+    return residue_sasas
 
 
 def _main(structure_file, model_id, node_atom_selection, include_hetatms, cutoff):
